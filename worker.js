@@ -79,7 +79,7 @@ class CipherBreaker {
                 let char = text[i];
                 if (/[A-Z]/i.test(char)) {
                     const base = char === char.toUpperCase() ? 65 : 97;
-                    const code = ((char.charCodeAt(0) - base - shift + 26) % 26 + base;
+                    const code = ((char.charCodeAt(0) - base - shift + 26) % 26) + base;
                     decrypted += String.fromCharCode(code);
                 } else {
                     decrypted += char;

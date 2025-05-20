@@ -48,29 +48,37 @@
         button:hover {
             background: #45a049;
         }
+        button:disabled {
+            background: #cccccc;
+            cursor: not-allowed;
+        }
+        .progress-container {
+            margin: 20px 0;
+            height: 10px;
+            background: #f0f0f0;
+            border-radius: 5px;
+            overflow: hidden;
+        }
+        .progress-bar {
+            height: 100%;
+            background: #4CAF50;
+            width: 0%;
+            transition: width 0.3s;
+        }
+        .status {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 5px;
+            background: #f8f8f8;
+        }
         .results {
             margin-top: 30px;
-            padding: 20px;
-            background: #f9f9f9;
-            border-radius: 8px;
         }
         .result-section {
             margin-bottom: 20px;
-            padding-bottom: 20px;
-            border-bottom: 1px solid #eee;
-        }
-        .result-section h3 {
-            margin-top: 0;
-            color: #333;
-        }
-        .confidence {
-            display: inline-block;
-            padding: 3px 8px;
-            background: #4CAF50;
-            color: white;
-            border-radius: 3px;
-            font-size: 14px;
-            margin-left: 10px;
+            padding: 15px;
+            background: #f9f9f9;
+            border-radius: 8px;
         }
         .matrix {
             display: grid;
@@ -88,6 +96,12 @@
             background: #4CAF50;
             color: white;
         }
+        .log-entry {
+            margin: 5px 0;
+            padding: 5px;
+            border-left: 3px solid #4CAF50;
+            background: #f8f8f8;
+        }
     </style>
 </head>
 <body>
@@ -98,12 +112,17 @@
         
         <button id="analyze-btn">Analyze</button>
         
-        <div class="results" id="results">
-            <!-- Results will be inserted here by JavaScript -->
+        <div class="progress-container">
+            <div class="progress-bar" id="progress-bar"></div>
         </div>
+        
+        <div class="status" id="status">Ready</div>
+        
+        <div class="analysis-log" id="analysis-log"></div>
+        
+        <div class="results" id="results"></div>
     </div>
 
-    <script src="worker.js"></script>
     <script src="core.js"></script>
 </body>
 </html>

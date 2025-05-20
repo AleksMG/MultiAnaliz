@@ -1,218 +1,156 @@
-// ====================== CORE CIPHER METHODS ======================
-const CipherCore = {
-    // ======== BASE64 & BINARY ========
-    tryBase64(text) {
-        if (!/^[A-Za-z0-9+/=]+$/.test(text)) return null;
-        try {
-            const decoded = atob(text);
-            return decoded.length > 0 ? decoded : null;
-        } catch (e) {
-            return null;
+// Импорт библиотек
+importScripts('https://cdn.jsdelivr.net/npm/lodash@4.17.21/lodash.min.js');
+
+// Основной класс для анализа
+class CipherAnalyzer {
+    constructor() {
+        this.methods = {
+            caesar: this.analyzeCaesar.bind(this),
+            vigenere: this.analyzeVigenere.bind(this),
+            transposition: this.analyzeTransposition.bind(this),
+            xor: this.analyzeXOR.bind(this),
+            k4: this.analyzeK4.bind(this)
+        };
+    }
+
+    // Основной метод анализа
+    analyze(payload) {
+        const { text, preset, options } = payload;
+        
+        // Если выбран конкретный метод, используем его
+        if (preset !== 'auto' && this.methods[preset]) {
+            return this.methods[preset](text, options);
         }
-    },
+        
+        // Автоматический анализ
+        return this.autoAnalyze(text, options);
+    }
 
-    // ======== CAESAR & ROT ========
-    caesarDecrypt(text, shift, alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ') {
-        return text.split('').map(c => {
-            const idx = alphabet.indexOf(c.toUpperCase());
-            if (idx === -1) return c;
-            const newIdx = (idx - shift + alphabet.length) % alphabet.length;
-            return alphabet[newIdx];
-        }).join('');
-    },
-
-    // ======== VIGENÈRE ========
-    vigenereDecrypt(text, key, alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ') {
-        return text.split('').map((c, i) => {
-            const textIdx = alphabet.indexOf(c.toUpperCase());
-            if (textIdx === -1) return c;
-            const keyChar = key[i % key.length].toUpperCase();
-            const keyIdx = alphabet.indexOf(keyChar);
-            return alphabet[(textIdx - keyIdx + alphabet.length) % alphabet.length];
-        }).join('');
-    },
-
-    // ======== XOR ========
-    xorDecrypt(text, key) {
-        let result = '';
-        for (let i = 0; i < text.length; i++) {
-            const charCode = text.charCodeAt(i) ^ key.charCodeAt(i % key.length);
-            result += String.fromCharCode(charCode);
+    // Автоматический анализ
+    autoAnalyze(text, options) {
+        const results = [];
+        
+        // Пробуем все методы
+        for (const [name, method] of Object.entries(this.methods)) {
+            try {
+                const result = method(text, options);
+                if (result) results.push(result);
+            } catch (err) {
+                console.warn(`Analysis ${name} failed:`, err);
+            }
         }
-        return result;
-    },
+        
+        // Выбираем лучший результат
+        return this.selectBestResult(results);
+    }
 
-    // ======== TRANSPOSITION ========
+    // Анализ Kryptos K4
+    analyzeK4(text, options) {
+        const steps = [];
+        
+        // 1. Замена символов
+        const replaced = text.replace(/\?/g, 'F').replace(/#/g, 'H');
+        steps.push({
+            method: "K4 Symbol Replacement",
+            result: replaced,
+            confidence: 85,
+            details: { replacements: {'?':'F', '#':'H'} }
+        });
+
+        // 2. Транспозиция 8x8
+        const matrix = this.createMatrix(replaced, 8, 8);
+        const spiralText = this.readSpiral(matrix);
+        steps.push({
+            method: "Spiral Transposition (8x8)",
+            result: spiralText,
+            confidence: 75,
+            details: { matrix, path: this.getSpiralPath(8, 8) }
+        });
+
+        // 3. Виженер с координатным ключом
+        const coordKey = this.generateCoordKey(matrix);
+        const vigenereText = this.vigenereDecrypt(spiralText, coordKey);
+        steps.push({
+            method: "Vigenère with Coordinate Key",
+            result: vigenereText,
+            confidence: 70,
+            details: { key: coordKey, keyGeneration: "Matrix coordinates" }
+        });
+
+        return {
+            success: true,
+            steps,
+            bestGuess: {
+                text: vigenereText,
+                method: "Vigenère + Transposition",
+                confidence: 75,
+                key: coordKey
+            },
+            visualization: {
+                matrix,
+                path: this.getSpiralPath(8, 8),
+                frequency: this.calculateFrequency(vigenereText)
+            }
+        };
+    }
+
+    // Другие методы анализа...
+    analyzeCaesar(text, options) {
+        // Реализация анализа Цезаря...
+    }
+
+    analyzeVigenere(text, options) {
+        // Реализация анализа Виженера...
+    }
+
+    // Вспомогательные методы
     createMatrix(text, rows, cols) {
         const matrix = [];
         for (let i = 0; i < rows; i++) {
             matrix.push(text.substr(i * cols, cols).split(''));
         }
         return matrix;
-    },
-
-    readColumnar(matrix, key) {
-        const order = key.split('').map((c, i) => ({ c, i }))
-            .sort((a, b) => a.c.localeCompare(b.c))
-            .map(x => x.i);
-        
-        let result = '';
-        for (const col of order) {
-            for (let row = 0; row < matrix.length; row++) {
-                if (matrix[row][col]) result += matrix[row][col];
-            }
-        }
-        return result;
-    },
-
-    // ======== POLYBIUS ========
-    polybiusDecrypt(text, square = [
-        ['A', 'B', 'C', 'D', 'E'],
-        ['F', 'G', 'H', 'I', 'K'],
-        ['L', 'M', 'N', 'O', 'P'],
-        ['Q', 'R', 'S', 'T', 'U'],
-        ['V', 'W', 'X', 'Y', 'Z']
-    ]) {
-        const coords = text.match(/.{1,2}/g) || [];
-        return coords.map(coord => {
-            const [row, col] = coord.split('').map(Number);
-            return square[row - 1]?.[col - 1] || '?';
-        }).join('');
-    },
-
-    // ======== HILL CIPHER ========
-    hillDecrypt(text, keyMatrix) {
-        // Реализация матричного дешифрования
-        const n = keyMatrix.length;
-        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-        const vector = text.split('').map(c => chars.indexOf(c));
-        let result = '';
-        
-        for (let i = 0; i < vector.length; i += n) {
-            const block = vector.slice(i, i + n);
-            const decrypted = keyMatrix.map(row => 
-                row.reduce((sum, val, j) => sum + val * block[j], 0) % 26
-            );
-            result += decrypted.map(idx => chars[idx]).join('');
-        }
-        return result;
     }
-};
 
-// ====================== ANALYSIS METHODS ======================
-const CipherAnalysis = {
-    // ======== KRYPTOS K4 SPECIAL ========
-    analyzeK4(text) {
-        const steps = [];
-        
-        // 1. Symbol replacement
-        const replaced = text.replace(/\?/g, 'F').replace(/#/g, 'H');
-        steps.push({
-            method: "K4 Symbol Replacement",
-            result: replaced,
-            confidence: 85
-        });
-
-        // 2. 8x8 Transposition
-        const matrix = CipherCore.createMatrix(replaced, 8, 8);
-        const spiral = this.readSpiral(matrix);
-        steps.push({
-            method: "Spiral Transposition",
-            result: spiral,
-            matrix,
-            confidence: 75
-        });
-
-        // 3. Vigenère with coordinate key
-        const coordKey = this.generateCoordKey(matrix);
-        const vigenereDecrypted = CipherCore.vigenereDecrypt(spiral, coordKey);
-        steps.push({
-            method: "Vigenère with Coordinate Key",
-            result: vigenereDecrypted,
-            key: coordKey,
-            confidence: 70
-        });
-
-        return {
-            steps,
-            decrypted: vigenereDecrypted,
-            bestGuess: steps[steps.length - 1]
-        };
-    },
-
-    // ======== AUTOMATIC ANALYSIS ========
-    fullAnalysis(text) {
-        const steps = [];
-        
-        // 1. Check encodings
-        const base64 = CipherCore.tryBase64(text);
-        if (base64) {
-            steps.push({
-                method: "Base64 Decode",
-                result: base64,
-                confidence: 90
-            });
-        }
-
-        // 2. Frequency analysis
-        const freqAnalysis = this.frequencyAnalysis(text);
-        steps.push(freqAnalysis);
-
-        // 3. Caesar brute force
-        const caesarResults = this.caesarBruteForce(text);
-        steps.push(...caesarResults);
-
-        // 4. Vigenère analysis
-        if (text.length > 20) {
-            const vigenereResult = this.vigenereAutoSolve(text);
-            steps.push(vigenereResult);
-        }
-
-        // 5. XOR analysis
-        const xorResult = this.xorAutoAnalyze(text);
-        steps.push(xorResult);
-
-        return {
-            steps,
-            bestGuess: this.selectBestResult(steps)
-        };
-    },
-
-    // ======== UTILITY METHODS ========
-    selectBestResult(steps) {
-        return steps.reduce((best, current) => 
-            (current.confidence > (best?.confidence || 0)) ? current : best
-        );
-    },
-
-    englishScore(text) {
-        const commonWords = ['THE', 'AND', 'FOR', 'ARE', 'YOU'];
-        return commonWords.reduce((score, word) => 
-            score + (text.includes(word) ? word.length : 0), 0
-        );
+    readSpiral(matrix) {
+        // Реализация спирального чтения...
     }
-};
 
-// ====================== WORKER INTERFACE ======================
+    generateCoordKey(matrix) {
+        // Генерация ключа на основе координат...
+    }
+
+    selectBestResult(results) {
+        // Выбор лучшего результата...
+    }
+}
+
+// Инициализация анализатора
+const analyzer = new CipherAnalyzer();
+
+// Обработчик сообщений
 self.onmessage = function(e) {
-    const { ciphertext, options } = e.data;
+    const { id, type, payload } = e.data;
     
     try {
-        let result;
-        if (options.cipherType === 'k4') {
-            result = CipherAnalysis.analyzeK4(ciphertext);
-        } else {
-            result = CipherAnalysis.fullAnalysis(ciphertext);
+        switch (type) {
+            case 'ANALYZE':
+                const result = analyzer.analyze(payload);
+                self.postMessage({
+                    id,
+                    type: 'RESULT',
+                    result
+                });
+                break;
+                
+            default:
+                throw new Error(`Unknown message type: ${type}`);
         }
-        
-        self.postMessage({ 
-            type: 'result', 
-            data: result 
-        });
     } catch (error) {
-        self.postMessage({ 
-            type: 'error', 
-            data: error.message 
+        self.postMessage({
+            id,
+            type: 'ERROR',
+            message: error.message
         });
     }
 };

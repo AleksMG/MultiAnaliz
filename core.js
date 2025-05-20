@@ -1,122 +1,127 @@
 class CipherApp {
     constructor() {
         this.worker = new Worker('worker.js');
-        this.currentId = 0;
-        this.init();
+        this.initElements();
+        this.initEvents();
+        this.resetState();
     }
 
-    init() {
+    initElements() {
         this.elements = {
             ciphertext: document.getElementById('ciphertext'),
             analyzeBtn: document.getElementById('analyze-btn'),
+            progressBar: document.getElementById('progress-bar'),
+            status: document.getElementById('status'),
+            analysisLog: document.getElementById('analysis-log'),
             results: document.getElementById('results')
         };
+    }
 
-        this.elements.analyzeBtn.addEventListener('click', () => this.analyze());
+    initEvents() {
+        this.elements.analyzeBtn.addEventListener('click', () => this.startAnalysis());
         
         this.worker.onmessage = (e) => {
-            if (e.data.id !== this.currentId) return;
+            const { type, data } = e.data;
             
-            if (e.data.error) {
-                this.showError(e.data.error);
-            } else {
-                this.displayResults(e.data.results);
+            switch (type) {
+                case 'PROGRESS':
+                    this.updateProgress(data);
+                    break;
+                case 'LOG':
+                    this.addLogEntry(data);
+                    break;
+                case 'RESULT':
+                    this.displayResult(data);
+                    break;
+                case 'ERROR':
+                    this.showError(data);
+                    break;
+                case 'COMPLETE':
+                    this.analysisComplete();
+                    break;
             }
         };
     }
 
-    analyze() {
+    resetState() {
+        this.elements.progressBar.style.width = '0%';
+        this.elements.status.textContent = 'Ready';
+        this.elements.analyzeBtn.disabled = false;
+        this.elements.analysisLog.innerHTML = '';
+        this.elements.results.innerHTML = '';
+    }
+
+    startAnalysis() {
         const text = this.elements.ciphertext.value.trim();
-        if (!text) return alert('Please enter ciphertext!');
+        if (!text) return this.showError('Please enter ciphertext');
         
-        this.currentId = Date.now();
-        this.elements.results.innerHTML = '<p>Analyzing...</p>';
+        this.resetState();
+        this.elements.analyzeBtn.disabled = true;
+        this.elements.status.textContent = 'Starting analysis...';
         
         this.worker.postMessage({
-            id: this.currentId,
+            type: 'ANALYZE',
             text
         });
     }
 
-    displayResults(results) {
-        if (!results || results.length === 0) {
-            this.elements.results.innerHTML = '<p>No meaningful results found</p>';
-            return;
-        }
+    updateProgress(percent) {
+        this.elements.progressBar.style.width = `${percent}%`;
+        this.elements.status.textContent = `Analyzing... ${Math.round(percent)}%`;
+    }
 
-        let html = '';
+    addLogEntry(message) {
+        const entry = document.createElement('div');
+        entry.className = 'log-entry';
+        entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+        this.elements.analysisLog.appendChild(entry);
+        this.elements.analysisLog.scrollTop = this.elements.analysisLog.scrollHeight;
+    }
+
+    displayResult(result) {
+        const resultEl = document.createElement('div');
+        resultEl.className = 'result-section';
         
-        // Best result
-        const best = results[0];
-        html += `
-            <div class="result-section">
-                <h3>Best Guess <span class="confidence">${Math.round(best.confidence)}%</span></h3>
-                <div class="decrypted">${best.result}</div>
-                <p><strong>Method:</strong> ${best.method}</p>
-                ${best.details.key ? `<p><strong>Key:</strong> ${best.details.key}</p>` : ''}
-            </div>
+        let content = `
+            <h3>${result.method} <span class="confidence">${Math.round(result.confidence)}% confidence</span></h3>
+            <div class="result">${result.result}</div>
         `;
-
-        // For K4 show matrix if available
-        if (best.method === "Kryptos K4 Method" && best.details.steps[1]?.matrix) {
-            html += `<div class="result-section">
-                <h3>Transposition Matrix</h3>
-                <div class="matrix">`;
-            
-            const matrix = best.details.steps[1].matrix;
-            for (let i = 0; i < 8; i++) {
-                html += `<div class="matrix-row">`;
-                for (let j = 0; j < 8; j++) {
-                    const cell = matrix[i][j] || ' ';
-                    html += `<div class="matrix-cell">${cell}</div>`;
-                }
-                html += `</div>`;
-            }
-            
-            html += `</div></div>`;
+        
+        if (result.details) {
+            content += `<div class="details"><pre>${JSON.stringify(result.details, null, 2)}</pre></div>`;
         }
+        
+        if (result.matrix) {
+            content += `<h4>Transposition Matrix</h4><div class="matrix">`;
+            for (let i = 0; i < result.matrix.length; i++) {
+                content += `<div class="matrix-row">`;
+                for (let j = 0; j < result.matrix[i].length; j++) {
+                    const cell = result.matrix[i][j] || ' ';
+                    const highlight = result.highlight?.some(pos => pos[0] === i && pos[1] === j) ? 'highlight' : '';
+                    content += `<div class="matrix-cell ${highlight}">${cell}</div>`;
+                }
+                content += `</div>`;
+            }
+            content += `</div>`;
+        }
+        
+        resultEl.innerHTML = content;
+        this.elements.results.appendChild(resultEl);
+    }
 
-        // All possible methods
-        html += `<div class="result-section">
-            <h3>All Attempted Methods</h3>
-            <table>
-                <tr>
-                    <th>Method</th>
-                    <th>Confidence</th>
-                    <th>Result Preview</th>
-                </tr>`;
-        
-        results.slice(0, 10).forEach(res => {
-            html += `
-                <tr>
-                    <td>${res.method}</td>
-                    <td>${Math.round(res.confidence)}%</td>
-                    <td>${res.result.substring(0, 30)}${res.result.length > 30 ? '...' : ''}</td>
-                </tr>`;
-        });
-        
-        html += `</table></div>`;
-        
-        // Analysis details
-        html += `<div class="result-section">
-            <h3>Analysis Details</h3>
-            <p><strong>Possible cipher types detected:</strong> ${results.map(r => r.method.split(' ')[0]).filter((v,i,a) => a.indexOf(v) === i).join(', ')}</p>
-            <p><strong>Recommended decryption method:</strong> ${best.method}</p>
-            ${best.details.decryptionMethod ? `<p>${best.details.decryptionMethod}</p>` : ''}
-        </div>`;
-        
-        this.elements.results.innerHTML = html;
+    analysisComplete() {
+        this.elements.status.textContent = 'Analysis complete';
+        this.elements.analyzeBtn.disabled = false;
+        this.addLogEntry('Analysis completed successfully');
     }
 
     showError(message) {
-        this.elements.results.innerHTML = `
-            <div class="error">
-                <p>Analysis failed:</p>
-                <p>${message}</p>
-            </div>
-        `;
+        this.elements.status.textContent = `Error: ${message}`;
+        this.elements.status.style.color = 'red';
+        this.elements.analyzeBtn.disabled = false;
+        this.addLogEntry(`ERROR: ${message}`);
     }
 }
 
-// Initialize
-new CipherApp();
+// Initialize the app
+document.addEventListener('DOMContentLoaded', () => new CipherApp());

@@ -1,117 +1,345 @@
 class CipherApp {
     constructor() {
-        this.initElements();
+        // Инициализация состояния
+        this.state = {
+            currentAnalysis: null,
+            history: [],
+            settings: {
+                deepScan: true,
+                useNLP: true,
+                saveResults: false
+            }
+        };
+
+        // Инициализация элементов
+        this.initDOM();
         this.initEvents();
+        this.initWorker();
         this.initChart();
+        this.updateClock();
+
+        // Загрузка сохраненных данных
+        this.loadSettings();
     }
 
-    initElements() {
+    initDOM() {
+        // Основные элементы
         this.elements = {
+            appContainer: document.querySelector('.app-container'),
             ciphertext: document.getElementById('ciphertext'),
             analyzeBtn: document.getElementById('analyze-btn'),
-            cipherType: document.getElementById('cipher-type'),
-            matrixSize: document.getElementById('matrix-size'),
-            report: document.getElementById('report'),
-            layers: document.getElementById('layers'),
-            matrix: document.getElementById('matrix'),
-            chart: document.getElementById('frequency-chart').getContext('2d')
+            loadK4Btn: document.getElementById('load-k4'),
+            loadZodiacBtn: document.getElementById('load-zodiac'),
+            cipherPreset: document.getElementById('cipher-preset'),
+            matrixView: document.getElementById('matrix-view'),
+            layerContainer: document.getElementById('layer-container'),
+            frequencyChart: document.getElementById('frequency-chart'),
+            jsonReport: document.getElementById('json-report'),
+            cpuStatus: document.getElementById('cpu-status'),
+            timeStatus: document.getElementById('time-status'),
+            memoryStatus: document.getElementById('memory-status')
+        };
+
+        // Элементы вкладок
+        this.tabs = {
+            summary: document.getElementById('summary-tab'),
+            layers: document.getElementById('layers-tab'),
+            visualization: document.getElementById('visualization-tab'),
+            fullReport: document.getElementById('full-report-tab'),
+            buttons: document.querySelectorAll('.tab-btn')
         };
     }
 
     initEvents() {
-        this.elements.analyzeBtn.addEventListener('click', () => this.startAnalysis());
+        // Кнопки управления
+        this.elements.analyzeBtn.addEventListener('click', () => this.analyze());
+        this.elements.loadK4Btn.addEventListener('click', () => this.loadSample('k4'));
+        this.elements.loadZodiacBtn.addEventListener('click', () => this.loadSample('zodiac'));
         
-        document.getElementById('load-k4').addEventListener('click', () => {
-            this.elements.ciphertext.value = "OBKRUOXOGHULBSOLIFBBWFLRVQQPRNGKSSOTWTQSJQSSEKZZWATJKLUDIAWINFBNYPVTTMZFPKWGDKZXTJCDIGKUHUAUEKCAR";
-            this.elements.cipherType.value = 'k4';
+        // Переключение вкладок
+        this.tabs.buttons.forEach(btn => {
+            btn.addEventListener('click', () => this.switchTab(btn.dataset.tab));
         });
+
+        // Настройки
+        document.getElementById('deep-scan').addEventListener('change', (e) => {
+            this.state.settings.deepScan = e.target.checked;
+            this.saveSettings();
+        });
+
+        // Другие обработчики событий...
     }
 
-    startAnalysis() {
-        const worker = new Worker('worker.js');
-        
-        worker.onmessage = (e) => {
-            const { type, data } = e.data;
-            
-            switch (type) {
-                case 'result':
-                    this.displayResults(data);
-                    break;
-                case 'error':
-                    this.showError(data);
-                    break;
-            }
-            worker.terminate();
-        };
+    initWorker() {
+        this.worker = new Worker('worker.js');
+        this.worker.onmessage = (e) => this.handleWorkerMessage(e.data);
+        this.worker.onerror = (err) => this.handleWorkerError(err);
+    }
 
-        worker.postMessage({
-            ciphertext: this.elements.ciphertext.value.trim(),
+    initChart() {
+        this.chart = new Chart(this.elements.frequencyChart, {
+            type: 'bar',
+            data: { labels: [], datasets: [] },
             options: {
-                cipherType: this.elements.cipherType.value,
-                matrixSize: parseInt(this.elements.matrixSize.value)
+                responsive: true,
+                scales: {
+                    y: { beginAtZero: true }
+                }
+            }
+        });
+    }
+
+    analyze() {
+        const text = this.elements.ciphertext.value.trim();
+        if (!text) return this.showError('Please enter ciphertext');
+
+        const preset = this.elements.cipherPreset.value;
+        const requestId = Date.now();
+
+        // Показать состояние загрузки
+        this.setAnalyzingState(true);
+
+        // Отправить задание воркеру
+        this.worker.postMessage({
+            id: requestId,
+            type: 'ANALYZE',
+            payload: {
+                text,
+                preset,
+                options: this.state.settings
             }
         });
 
-        this.elements.report.textContent = "Analyzing...";
+        // Сохранить информацию о запросе
+        this.state.currentAnalysis = {
+            id: requestId,
+            startTime: performance.now(),
+            status: 'processing'
+        };
     }
 
-    displayResults(result) {
-        this.elements.layers.innerHTML = '';
-        
-        // Display each step
-        result.steps.forEach(step => {
-            const layerEl = document.createElement('div');
-            layerEl.className = 'layer';
-            
-            layerEl.innerHTML = `
-                <h3>${step.method} 
-                    <span class="confidence-${this.getConfidenceClass(step.confidence)}">
-                        ${step.confidence}%
-                    </span>
-                </h3>
-                <div class="result">${step.result.substring(0, 100)}...</div>
-                ${step.matrix ? `<div class="matrix-preview">Matrix ${step.matrix.length}x${step.matrix[0].length}</div>` : ''}
-                ${step.key ? `<div class="key">Key: ${step.key}</div>` : ''}
-                <button class="details-btn">Show Details</button>
-                <div class="details" style="display:none">
-                    <pre>${JSON.stringify(step, null, 2)}</pre>
-                </div>
-            `;
-            
-            layerEl.querySelector('.details-btn').addEventListener('click', (e) => {
-                const details = e.target.nextElementSibling;
-                details.style.display = details.style.display === 'none' ? 'block' : 'none';
-            });
-            
-            this.elements.layers.appendChild(layerEl);
-        });
+    handleWorkerMessage(data) {
+        if (data.type === 'PROGRESS') {
+            this.updateProgress(data.message);
+            return;
+        }
 
-        // Display best guess
-        this.elements.report.innerHTML = `
-            <h3>🌟 Best Guess (${result.bestGuess.confidence}% confidence)</h3>
-            <div class="best-result">${result.bestGuess.result}</div>
-            <h4>Full Report:</h4>
-            <pre>${JSON.stringify(result, null, 2)}</pre>
-        `;
+        if (data.type === 'RESULT') {
+            const analysisTime = ((performance.now() - this.state.currentAnalysis.startTime) / 1000).toFixed(2);
+            this.displayResults(data.result, analysisTime);
+            this.setAnalyzingState(false);
+            return;
+        }
 
-        // Visualize if available
-        if (result.steps.some(s => s.matrix)) {
-            const matrixStep = result.steps.find(s => s.matrix);
-            this.renderMatrix(matrixStep.matrix);
+        if (data.type === 'ERROR') {
+            this.showError(data.message);
+            this.setAnalyzingState(false);
+            return;
         }
     }
 
-    renderMatrix(matrix) {
-        this.elements.matrix.innerHTML = '';
-        this.elements.matrix.style.gridTemplateColumns = `repeat(${matrix[0].length}, 1fr)`;
+    handleWorkerError(error) {
+        console.error('Worker error:', error);
+        this.showError('Analysis worker failed');
+        this.setAnalyzingState(false);
+    }
+
+    displayResults(result, analysisTime) {
+        // Обновить интерфейс с результатами
+        this.updateSummaryTab(result.bestGuess, analysisTime);
+        this.updateLayersTab(result.steps);
+        this.updateVisualizationTab(result.visualization);
+        this.updateFullReportTab(result);
+
+        // Переключиться на вкладку сводки
+        this.switchTab('summary');
+
+        // Обновить историю
+        this.state.history.unshift({
+            timestamp: new Date(),
+            result,
+            analysisTime
+        });
+    }
+
+    updateSummaryTab(bestGuess, time) {
+        const summaryCard = document.querySelector('.summary-card');
         
-        matrix.forEach(row => {
-            row.forEach(cell => {
+        // Обновляем содержимое карточки
+        summaryCard.querySelector('.best-guess-result').textContent = 
+            `"${bestGuess.text}"`;
+        
+        summaryCard.querySelector('.confidence-badge').className = 
+            `confidence-badge ${this.getConfidenceClass(bestGuess.confidence)}`;
+        
+        summaryCard.querySelector('.confidence-badge span').textContent = 
+            `${bestGuess.confidence}% Confidence`;
+        
+        // Обновляем детали
+        const detailsContainer = summaryCard.querySelector('.summary-details');
+        detailsContainer.innerHTML = `
+            <div class="detail-item">
+                <span class="detail-label">Method:</span>
+                <span class="detail-value">${bestGuess.method}</span>
+            </div>
+            <div class="detail-item">
+                <span class="detail-label">Key Found:</span>
+                <span class="detail-value">${bestGuess.key || 'N/A'}</span>
+            </div>
+            <div class="detail-item">
+                <span class="detail-label">Time:</span>
+                <span class="detail-value">${time}s</span>
+            </div>
+        `;
+    }
+
+    updateLayersTab(steps) {
+        this.elements.layerContainer.innerHTML = '';
+        
+        steps.forEach((step, index) => {
+            const layerEl = document.createElement('div');
+            layerEl.className = 'layer-card';
+            layerEl.innerHTML = `
+                <div class="layer-header">
+                    <h3>${index + 1}. ${step.method}</h3>
+                    <div class="layer-confidence ${this.getConfidenceClass(step.confidence)}">
+                        ${step.confidence}%
+                    </div>
+                </div>
+                <div class="layer-result">
+                    ${step.result.substring(0, 100)}${step.result.length > 100 ? '...' : ''}
+                </div>
+                <button class="layer-details-btn">
+                    <i class="fas fa-chevron-down"></i> Details
+                </button>
+                <div class="layer-details" style="display:none;">
+                    <pre>${JSON.stringify(step.details, null, 2)}</pre>
+                </div>
+            `;
+            
+            // Добавляем обработчик для кнопки деталей
+            layerEl.querySelector('.layer-details-btn').addEventListener('click', (e) => {
+                const details = e.target.nextElementSibling;
+                const icon = e.target.querySelector('i');
+                
+                if (details.style.display === 'none') {
+                    details.style.display = 'block';
+                    icon.className = 'fas fa-chevron-up';
+                } else {
+                    details.style.display = 'none';
+                    icon.className = 'fas fa-chevron-down';
+                }
+            });
+            
+            this.elements.layerContainer.appendChild(layerEl);
+        });
+    }
+
+    updateVisualizationTab(data) {
+        // Обновляем матрицу
+        this.renderMatrix(data.matrix, data.path);
+        
+        // Обновляем частотный анализ
+        this.updateFrequencyChart(data.frequency);
+    }
+
+    updateFullReportTab(result) {
+        this.elements.jsonReport.textContent = JSON.stringify(result, null, 2);
+    }
+
+    renderMatrix(matrix, path = []) {
+        this.elements.matrixView.innerHTML = '';
+        
+        if (!matrix || matrix.length === 0) return;
+        
+        // Устанавливаем правильное количество колонок
+        this.elements.matrixView.style.gridTemplateColumns = `repeat(${matrix[0].length}, 1fr)`;
+        
+        // Заполняем матрицу
+        matrix.forEach((row, rowIndex) => {
+            row.forEach((cell, colIndex) => {
                 const cellEl = document.createElement('div');
+                cellEl.className = 'matrix-cell';
                 cellEl.textContent = cell;
-                this.elements.matrix.appendChild(cellEl);
+                
+                // Подсвечиваем ячейки, которые входят в путь
+                if (path.some(pos => pos[0] === rowIndex && pos[1] === colIndex)) {
+                    cellEl.classList.add('highlight');
+                }
+                
+                this.elements.matrixView.appendChild(cellEl);
             });
         });
+    }
+
+    updateFrequencyChart(freqData) {
+        const labels = Object.keys(freqData);
+        const values = Object.values(freqData);
+        
+        this.chart.data.labels = labels;
+        this.chart.data.datasets = [{
+            label: 'Character Frequency',
+            data: values,
+            backgroundColor: '#4361ee',
+            borderColor: '#3a0ca3',
+            borderWidth: 1
+        }];
+        
+        this.chart.update();
+    }
+
+    switchTab(tabName) {
+        // Скрыть все вкладки
+        Object.values(this.tabs).forEach(tab => {
+            if (tab.classList) tab.classList.remove('active');
+        });
+        
+        // Показать выбранную вкладку
+        document.getElementById(`${tabName}-tab`).classList.add('active');
+        
+        // Обновить активные кнопки
+        this.tabs.buttons.forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.tab === tabName);
+        });
+    }
+
+    setAnalyzingState(isAnalyzing) {
+        const btn = this.elements.analyzeBtn;
+        
+        if (isAnalyzing) {
+            btn.classList.add('analyzing');
+            btn.disabled = true;
+            this.elements.cpuStatus.textContent = 'Analyzing...';
+        } else {
+            btn.classList.remove('analyzing');
+            btn.disabled = false;
+            this.elements.cpuStatus.textContent = 'Ready';
+        }
+    }
+
+    updateProgress(message) {
+        this.elements.cpuStatus.textContent = message;
+    }
+
+    updateClock() {
+        const now = new Date();
+        const timeStr = now.toLocaleTimeString();
+        this.elements.timeStatus.textContent = timeStr;
+        setTimeout(() => this.updateClock(), 1000);
+    }
+
+    loadSample(type) {
+        const samples = {
+            k4: "OBKRUOXOGHULBSOLIFBBWFLRVQQPRNGKSSOTWTQSJQSSEKZZWATJKLUDIAWINFBNYPVTTMZFPKWGDKZXTJCDIGKUHUAUEKCAR",
+            zodiac: "HER>pl^VPk|1LTG2dNp+B(#O%DWY.<*Kf)By:cM+UZGW()L#zHJ(Spp7^l8*V3pO++RK2_9M+ztjd|5FP+&4k/p8R^FlO-*dCkF>2Df#6+L@G7"
+        };
+        
+        this.elements.ciphertext.value = samples[type];
+        this.elements.cipherPreset.value = type;
+    }
+
+    showError(message) {
+        // Реализация показа ошибок...
     }
 
     getConfidenceClass(confidence) {
@@ -120,10 +348,16 @@ class CipherApp {
         return 'low';
     }
 
-    showError(message) {
-        this.elements.report.innerHTML = `<div class="error">❌ ${message}</div>`;
+    loadSettings() {
+        // Загрузка настроек из localStorage...
+    }
+
+    saveSettings() {
+        // Сохранение настроек в localStorage...
     }
 }
 
-// Initialize app
-document.addEventListener('DOMContentLoaded', () => new CipherApp());
+// Инициализация приложения
+document.addEventListener('DOMContentLoaded', () => {
+    const app = new CipherApp();
+});

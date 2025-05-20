@@ -3,7 +3,6 @@ class CipherApp {
         this.worker = new Worker('worker.js');
         this.initElements();
         this.initEvents();
-        this.resetState();
     }
 
     initElements() {
@@ -43,21 +42,17 @@ class CipherApp {
         };
     }
 
-    resetState() {
-        this.elements.progressBar.style.width = '0%';
-        this.elements.status.textContent = 'Ready';
-        this.elements.analyzeBtn.disabled = false;
-        this.elements.analysisLog.innerHTML = '';
-        this.elements.results.innerHTML = '';
-    }
-
     startAnalysis() {
         const text = this.elements.ciphertext.value.trim();
         if (!text) return this.showError('Please enter ciphertext');
         
-        this.resetState();
-        this.elements.analyzeBtn.disabled = true;
+        // Сброс предыдущих результатов
+        this.elements.progressBar.style.width = '0%';
         this.elements.status.textContent = 'Starting analysis...';
+        this.elements.status.style.color = '';
+        this.elements.analysisLog.innerHTML = '';
+        this.elements.results.innerHTML = '';
+        this.elements.analyzeBtn.disabled = true;
         
         this.worker.postMessage({
             type: 'ANALYZE',
@@ -71,9 +66,11 @@ class CipherApp {
     }
 
     addLogEntry(message) {
+        const now = new Date();
+        const timeStr = now.toTimeString().substring(0, 8);
         const entry = document.createElement('div');
         entry.className = 'log-entry';
-        entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+        entry.textContent = `[${timeStr}] ${message}`;
         this.elements.analysisLog.appendChild(entry);
         this.elements.analysisLog.scrollTop = this.elements.analysisLog.scrollHeight;
     }
@@ -112,7 +109,6 @@ class CipherApp {
     analysisComplete() {
         this.elements.status.textContent = 'Analysis complete';
         this.elements.analyzeBtn.disabled = false;
-        this.addLogEntry('Analysis completed successfully');
     }
 
     showError(message) {
@@ -123,5 +119,5 @@ class CipherApp {
     }
 }
 
-// Initialize the app
+// Инициализация приложения
 document.addEventListener('DOMContentLoaded', () => new CipherApp());

@@ -3,36 +3,54 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Advanced Cipher Breaker</title>
+    <title>Kryptos K4 & Advanced Cipher Breaker</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <div class="container">
-        <h1>Kryptos K4 & Advanced Cipher Breaker</h1>
+        <h1>🔐 Advanced Cipher Breaker (Kryptos K4 Ready)</h1>
         
+        <div class="toolbar">
+            <button id="load-k4">Load K4 Sample</button>
+            <button id="load-zodiac">Load Zodiac-340</button>
+        </div>
+
         <div class="input-section">
             <textarea id="ciphertext" placeholder="Paste ciphertext (e.g., OBKRUOXOG...)"></textarea>
-            <button id="analyze-btn">Auto-Analyze</button>
-            <div class="options">
-                <label><input type="checkbox" id="deep-scan"> Deep Scan (5 layers)</label>
-                <label><input type="checkbox" id="use-nlp" checked> Use NLP Validation</label>
+            <div class="controls">
+                <button id="analyze-btn">🚀 Auto-Analyze</button>
+                <select id="cipher-type">
+                    <option value="auto">Auto-Detect</option>
+                    <option value="vigenere">Vigenère</option>
+                    <option value="transposition">Transposition</option>
+                    <option value="xor">XOR</option>
+                    <option value="k4">Kryptos K4</option>
+                </select>
             </div>
         </div>
 
         <div class="visualization">
-            <div class="matrix-view" id="matrix"></div>
-            <div class="frequency-chart" id="chart"></div>
+            <div class="matrix-container">
+                <h3>Transposition Matrix</h3>
+                <div id="matrix"></div>
+                <input type="number" id="matrix-size" min="2" max="20" value="8" placeholder="Matrix size">
+            </div>
+            <div class="frequency-container">
+                <h3>Frequency Analysis</h3>
+                <canvas id="frequency-chart"></canvas>
+            </div>
         </div>
 
         <div class="results">
-            <h2>Decryption Layers</h2>
+            <h2>🔍 Decryption Layers</h2>
             <div id="layers"></div>
             
-            <h2>Full Report</h2>
+            <h2>📊 Full Report</h2>
             <pre id="report"></pre>
         </div>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="core.js"></script>
 </body>
 </html>

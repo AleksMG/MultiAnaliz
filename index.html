@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced Cipher Breaker</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Kryptos K4 & Advanced Cipher Breaker</h1>
+        
+        <div class="input-section">
+            <textarea id="ciphertext" placeholder="Paste ciphertext (e.g., OBKRUOXOG...)"></textarea>
+            <button id="analyze-btn">Auto-Analyze</button>
+            <div class="options">
+                <label><input type="checkbox" id="deep-scan"> Deep Scan (5 layers)</label>
+                <label><input type="checkbox" id="use-nlp" checked> Use NLP Validation</label>
+            </div>
+        </div>
+
+        <div class="visualization">
+            <div class="matrix-view" id="matrix"></div>
+            <div class="frequency-chart" id="chart"></div>
+        </div>
+
+        <div class="results">
+            <h2>Decryption Layers</h2>
+            <div id="layers"></div>
+            
+            <h2>Full Report</h2>
+            <pre id="report"></pre>
+        </div>
+    </div>
+
+    <script src="core.js"></script>
+</body>
+</html>
